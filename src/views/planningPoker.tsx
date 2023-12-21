@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import lodashSortby from 'https://cdn.skypack.dev/lodash.sortby';
 import { PlanningPokerStyles } from './planningPokerStyles';
 
-const EXTENSION_ID = 'aha-develop.planning-poker';
-const FIELD_BASE = 'estimate';
+const EXTENSION_ID = 'jeff-at-aha.scoring-poker';
+const FIELD_BASE = 'votes';
 const PALETTE = ['#8dd3c7','#ffffb3','#bebada','#fb8072','#80b1d3','#fdb462','#b3de69','#fccde5','#d9d9d9','#bc80bd','#ccebc5','#ffed6f']
+
 
 interface VoteData {
   id: string;
@@ -14,9 +15,48 @@ interface VoteData {
   unknown?: boolean;
 }
 
+type VotingRecords = Record<string, VoteData[]>
+
 interface Options {
   values: number[]
   includeUnknown: boolean
+}
+
+async function getVotes(record): Promise<VoteData[]> {
+  const allRecords = await aha.account.getExtensionField<VotingRecords>(EXTENSION_ID, FIELD_BASE)
+  if (allRecords && Object.keys(allRecords).includes(record.id)) {
+    return allRecords[record.id]
+  } else {
+   return []
+  }
+}
+
+async function persistExtensionData(record, user, estimate) {
+  const payload: VoteData = {
+    id: String(user.id),
+    name: user.name,
+    avatar: user.avatarUrl,
+    estimate: null
+  };
+
+  const allRecords = (await aha.account.getExtensionField<VotingRecords>(EXTENSION_ID, FIELD_BASE)) || {}
+  const votes = allRecords[record.id] || []
+
+  let newVotes
+  if (estimate === null) {
+    newVotes = votes.filter(v => v.id !== payload.id) // drop vote
+  } else {
+    payload.estimate = estimate
+    newVotes = votes.concat(payload) // append vote
+  }
+  allRecords[record.id] = newVotes
+
+  await aha.account.setExtensionField(EXTENSION_ID, FIELD_BASE, allRecords);
+  return newVotes
+}
+
+async function clearExtensionData(record, voter) {
+  return await persistExtensionData(record, voter, null)
 }
 
 const PokerCard = ({ width = 29, height = 40, value, onClick }) => (
@@ -135,42 +175,35 @@ const VoteAnalysis = ({ votes }) => {
   );
 };
 
-const PlanningPoker = ({ record, options, initialVotes }) => {
-  const [votes, setVotes] = useState<VoteData[]>(initialVotes);
+const PlanningPoker = ({ record, options }) => {
+  useEffect(() => {
+    (async () => {
+      const votes = await getVotes(record)
+      setVotes(votes)
+    })()
+  }, [])
+
+  const [votes, setVotes] = useState<VoteData[]>([]);
   const [hasVoted, setHasVoted] = useState<Boolean>(
     votes.some((v) => v.id === aha.user.id)
   );
 
   // Update state if the intial vote count changes - i.e. another user updates
   // their vote and our parent's props change.
-  useEffect(() => setVotes(initialVotes), [initialVotes]);
+  // useEffect(() => setVotes(initialVotes), [initialVotes]);
 
   const user = aha.user;
   const extensionFieldKey = `${FIELD_BASE}:${user.id}`;
 
   const storeVote = async (estimate) => {
-    const payload: VoteData = {
-      id: String(user.id),
-      name: user.name,
-      avatar: user.avatarUrl,
-      estimate: null
-    };
-
-    if (estimate === null) {
-      payload.unknown = true
-    } else {
-      payload.estimate = estimate
-    }
-
-    await record.setExtensionField(EXTENSION_ID, extensionFieldKey, payload);
-
-    setVotes(votes.filter((v) => v.id != user.id).concat([payload]));
+    const newVotes = await persistExtensionData(record, user, estimate)
+    setVotes(newVotes);
     setHasVoted(true);
   };
 
   const clearVote = async () => {
     setHasVoted(false);
-    await record.clearExtensionField(EXTENSION_ID, extensionFieldKey);
+    await clearExtensionData(record, user)
   };
 
   return (
@@ -215,20 +248,13 @@ const PlanningPoker = ({ record, options, initialVotes }) => {
 };
 
 aha.on(
-  'planningPoker',
+  'scoringPoker',
   ({ record, fields }: { record: any; fields: Record<string, VoteData> }, { settings }) => {
-    // Parse the vote data
-    const votes = Object.entries(fields)
-      .filter(
-        ([key, vote]) =>
-          key.includes(FIELD_BASE) && vote.hasOwnProperty(FIELD_BASE)
-      )
-      .map(([_, vote]) => vote);
     const options: Options = {
       includeUnknown: settings.includeUnknown as boolean,
       values: (settings.options as string[]).map(o => parseInt(o, 10)) // Ensure options come through as numeric values
     }
 
-    return <PlanningPoker record={record} options={options} initialVotes={votes} />;
+    return <PlanningPoker record={record} options={options} />;
   }
 );

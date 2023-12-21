@@ -1,8 +1,8 @@
 {
-  "name": "aha-develop.planning-poker",
-  "description": "Planning poker",
-  "version": "1.2.0",
-  "author": "Aha! (support@aha.io)",
+  "name": "jeff-at-aha.scoring-poker",
+  "description": "Community scoring (Kellymock)",
+  "version": "0.0.0",
+  "author": "trydionel",
   "repository": {
     "type": "git",
     "url": "https://github.com/aha-develop/planning-poker"
@@ -13,11 +13,11 @@
     "contributes": {
       "settings": {
         "options": {
-          "title": "Estimate options",
+          "title": "Score options",
           "type": "number",
           "scope": ["account"],
           "array": true,
-          "default": [0, 1, 2, 3, 5, 8]
+          "default": [0, 1, 2, 3, 4, 5, 6, 7]
         },
         "includeUnknown": {
           "title": "Include unknown option",
@@ -27,13 +27,12 @@
         }
       },
       "views": {
-        "planningPoker": {
-          "title": "Planning poker",
+        "scoringPoker": {
+          "title": "Community scoring",
           "host": "attribute",
           "entryPoint": "src/views/planningPoker.tsx",
           "recordTypes": [
-            "Feature",
-            "Requirement"
+            "Ideas::Idea"
           ]
         }
       }
